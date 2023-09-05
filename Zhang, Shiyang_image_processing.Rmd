@@ -1,0 +1,198 @@
+---
+title: "assignment 4"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r import data}
+setwd("C:/Users/wenwe/Box/00 Wen Wen/03 courses/2021 fall course/PSY 394S ML/assignment/Assignment 4/processed")
+library(jpeg)
+library(dplyr)
+images <- list.files(path="C:/Users/wenwe/Box/00 Wen Wen/03 courses/2021 fall course/PSY 394S ML/assignment/Assignment 4/processed")
+d <- lapply(images, readJPEG)
+img1 <- readJPEG("AMR_A_M.jpg")
+imgDm <- dim(img1)
+img_data <- data.frame(
+  x = rep(1:imgDm[2], each = imgDm[1]),
+  y = rep(imgDm[1]:1, imgDm[2]))
+n<-1
+for(n in 1:120){
+img_data[,n+2] = as.vector(d[[n]][,])
+  n<-n+1
+}
+img_data_used<-img_data%>%
+  select(-c("x","y"))
+colnames(img_data_used) <- c(images)
+#transpose data frame
+img_data_used_t <- t(img_data_used)
+```
+```{r dimension reduction PCA}
+library("tidyverse")
+PCA_result <- prcomp(img_data_used_t, scale = TRUE)
+#PCA_result$rotation_1 <- -1*PCA_result$rotation
+#PCA_result$x_1 <- -1*PCA_result$x
+#calculate total variance explained by each principal component
+#var_explained = PCA_result$sdev^2 / sum(PCA_result$sdev^2)
+#create scree plot
+#qplot(c(1:4), var_explained) + 
+#  geom_line() + 
+#  xlab("Principal Component") + 
+#  ylab("Variance Explained") +
+#  ggtitle("Scree Plot") +
+#  ylim(0, 1)
+library(factoextra)
+get_eig(PCA_result)
+fviz_eig(PCA_result)
+```
+
+
+```{r plot eigenface1}
+PCA1_vector<-as.vector(PCA_result$rotation[1,])
+img_data_used_t_matrix<-as.matrix(img_data_used_t)
+PCA1_plot<-PCA1_vector%*%img_data_used_t_matrix
+PCA1_plot_pos<-(PCA1_plot+0.05809)*20
+
+imgRGB <- data.frame(  
+  x = rep(1:imgDm[2], each = imgDm[1]),
+  y = rep(imgDm[1]:1, imgDm[2]),
+  R = as.vector(PCA1_plot_pos),
+  G = as.vector(PCA1_plot_pos),
+  B = as.vector(PCA1_plot_pos)
+  )
+library(ggplot2)
+plotTheme <- function() {
+  theme(
+    panel.background = element_rect(
+      size = 3,
+      colour = "black",
+      fill = "white"),
+    axis.ticks = element_line(
+      size = 2),
+    panel.grid.major = element_line(
+      colour = "gray80",
+      linetype = "dotted"),
+    panel.grid.minor = element_line(
+      colour = "gray90",
+      linetype = "dashed"),
+    axis.title.x = element_text(
+      size = rel(1.2),
+      face = "bold"),
+    axis.title.y = element_text(
+      size = rel(1.2),
+      face = "bold"),
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      vjust = 1.5)
+  )
+}
+
+# Plot the image
+ggplot(data = imgRGB, aes(x = x, y = y)) + 
+  geom_point(colour = rgb(imgRGB[c("R", "G", "B")])) +
+  labs(title = "eigenface1") +
+  xlab("x") +
+  ylab("y") +
+  plotTheme()
+```
+
+```{r plot based on selected components: preparation}
+#emotion, mask, person
+img_data_lable<- data.frame(matrix(ncol = 0, nrow = 120))
+rownames(img_data_lable) <- c(images)
+img_data_lable$person<-str_extract(rownames(img_data_used_t), "[^_]+")
+emotion_mask<-str_extract(rownames(img_data_used_t), "_[^_]_[^_]")
+img_data_lable$emotion<-str_extract(emotion_mask, "[^_^]")
+img_data_lable$mask<-str_sub(emotion_mask,start = 4)
+img_data_all <- merge(img_data_lable, img_data_used_t, by=0, all=TRUE)
+```
+
+
+```{r calculate silhouette scores}
+library("cluster")
+n<-1
+for (n in 1:4){
+sil_mask <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,n:n+1]))
+print(summary(sil_mask))
+sil_mask2 <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,c(n,n+2)]))
+print(summary(sil_mask2))
+sil_mask3 <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,c(n,n+3)]))
+print(summary(sil_mask3))
+sil_mask4 <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,c(n,n+4)]))
+print(summary(sil_mask4))
+n<n+1
+}
+# top two largest silhouette scores for mask: component1 and 2 or component 1 and 5
+sil_mask12 <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,c(1,2)]))
+fviz_silhouette(sil_mask12)
+sil_mask15 <- silhouette(as.numeric(as.factor(img_data_all$mask)), dist(PCA_result$x[,c(1,5)]))
+fviz_silhouette(sil_mask15)
+#1,2 is the best
+
+for (n in 1:4){
+sil_emotion <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,n:n+1]))
+print(summary(sil_emotion))
+sil_emotion2 <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,c(n,n+2)]))
+print(summary(sil_emotion2))
+sil_emotion3 <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,c(n,n+3)]))
+print(summary(sil_emotion3))
+sil_emotion4 <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,c(n,n+4)]))
+print(summary(sil_emotion4))
+n<n+1
+}
+
+# top two largest silhouette scores for emotion: component1 and 3 or component 1 and 4
+
+sil_emotion13 <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,c(1,3)]))
+fviz_silhouette(sil_emotion13)
+sil_emotion14 <- silhouette(as.numeric(as.factor(img_data_all$emotion)), dist(PCA_result$x[,c(1,4)]))
+fviz_silhouette(sil_emotion14)
+# 1 and 3 is better but both are not good
+
+for (n in 1:4){
+sil_person <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,n:n+1]))
+print(summary(sil_person))
+sil_person2 <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,c(n,n+2)]))
+print(summary(sil_person2))
+sil_person3 <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,c(n,n+3)]))
+print(summary(sil_person3))
+sil_person4 <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,c(n,n+4)]))
+print(summary(sil_person4))
+n<n+1
+}
+# top two largest silhouette scores for person: component3 and 5 or component 3 and 6
+sil_person35 <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,c(3,5)]))
+fviz_silhouette(sil_person35)
+sil_person36 <- silhouette(as.numeric(as.factor(img_data_all$person)), dist(PCA_result$x[,c(3,6)]))
+fviz_silhouette(sil_person36)
+#component 3 and 6 are the best
+```
+
+
+```{r plot}
+library(ggfortify)
+autoplot(PCA_result, x=3, y=6,data = img_data_all,
+        colour = "person")
+autoplot(PCA_result,x=1, y=3,data = img_data_all,
+        colour = "emotion")
+autoplot(PCA_result,x=1, y=2,data = img_data_all,
+        colour = "mask")
+```
+
+```{r 3 dimension}
+library("rgl")
+par3d("mouseMode")
+plot3d(PCA_result$x[,1:3],col = seq_along(levels(as.factor(img_data_all$mask))))
+plot3d(PCA_result$x[,1:3],col = seq_along(levels(as.factor(img_data_all$emotion))))
+plot3d(PCA_result$x[,1:3],col = seq_along(levels(as.factor(img_data_all$person))))
+```
+
+```{r isomap}
+#cannot run as the dataset is too big for this function
+#library(vegan)
+#dis <- vegdist(img_data_used)
+#imap <- isomap(dis)
+```
